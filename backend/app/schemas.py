@@ -43,6 +43,9 @@ class CardOut(BaseModel):
     card_type: str
     difficulty: str
     source_quote: str
+    explanation: str
+    why_it_matters: str
+    tags: str
     is_flagged: bool
     due_date: datetime
     interval_days: int

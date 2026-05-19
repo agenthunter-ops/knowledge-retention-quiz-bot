@@ -281,6 +281,11 @@ export default function App() {
                   <>
                     <p><strong>Q:</strong> {card.question}</p>
                     <p><strong>A:</strong> {card.answer}</p>
+                    <p><strong>Card Type:</strong> {card.card_type}</p>
+                    <p><strong>Difficulty:</strong> {card.difficulty}</p>
+                    <p><strong>Explanation:</strong> {card.explanation}</p>
+                    <p><strong>Why it matters:</strong> {card.why_it_matters}</p>
+                    <p><strong>Source Quote:</strong> {card.source_quote}</p>
                     <p className="muted">Status: {card.is_flagged ? 'Flagged' : 'Active'}</p>
                     <div className="action-row">
                       <button className="secondary-btn" onClick={() => startEdit(card)}>Edit</button>

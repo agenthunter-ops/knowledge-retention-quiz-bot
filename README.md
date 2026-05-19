@@ -6,7 +6,7 @@ A simple full-stack app that turns notes/highlights into quiz cards and schedule
 
 - Add highlights/notes with source metadata.
 - Persist note title, source type, note text, tags, and timestamps.
-- Generate quiz cards using a **mock** generator (no LLM dependency).
+- Generate quiz cards with an LLM when `OPENAI_API_KEY` is available, with automatic fallback to the mock generator.
 - List due cards.
 - Reveal answer.
 - Rate recall (`AGAIN`, `HARD`, `GOOD`, `EASY`) to schedule next due date.
@@ -52,6 +52,25 @@ npm run dev
 ```
 
 Frontend runs at `http://localhost:5173`.
+### 3) AI Configuration
+
+Create a `.env` file in the repo root (you can copy from `.env.example`):
+
+```bash
+cp .env.example .env
+```
+
+Set your OpenAI key:
+
+```bash
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+Behavior:
+- If `OPENAI_API_KEY` is set, the backend attempts LLM-based generation and creates exactly 3 cards per highlight.
+- If `OPENAI_API_KEY` is missing or LLM generation fails, the backend falls back to the existing mock generator and still saves the highlight.
+- Each generated card includes: `question`, `answer`, `card_type`, `difficulty`, and `source_quote`.
+
 
 ## API Endpoints (MVP)
 
@@ -65,4 +84,4 @@ Frontend runs at `http://localhost:5173`.
 
 - No authentication in MVP.
 - No secrets are hardcoded.
-- Quiz generation is intentionally mocked for iteration speed and reviewability.
+- Quiz generation uses an LLM when configured and falls back to mock generation for resilience.

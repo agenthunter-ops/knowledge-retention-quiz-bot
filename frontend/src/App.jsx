@@ -18,6 +18,8 @@ export default function App() {
   const [revealed, setRevealed] = useState({})
   const [lastReviewUpdate, setLastReviewUpdate] = useState({})
   const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   const [highlightForm, setHighlightForm] = useState({
     source_title: '',
@@ -69,21 +71,42 @@ export default function App() {
 
   async function submitHighlight(e) {
     e.preventDefault()
-    await fetch(`${API}/highlights`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...highlightForm,
-        tags: highlightForm.tags
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean),
-      }),
-    })
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      const res = await fetch(`${API}/highlights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...highlightForm,
+          tags: highlightForm.tags
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean),
+        }),
+      })
 
-    setHighlightForm({ source_title: '', source_type: 'book', text: '', tags: '' })
-    setActivePage('due-cards')
-    loadData()
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        const detail = err.detail
+        const message = Array.isArray(detail)
+          ? detail.map((d) => d.msg).join(', ')
+          : typeof detail === 'string'
+            ? detail
+            : `Request failed (${res.status})`
+        throw new Error(message)
+      }
+
+      setHighlightForm({ source_title: '', source_type: 'book', text: '', tags: '' })
+      setActivePage('due-cards')
+      await loadData()
+    } catch (err) {
+      setSubmitError(
+        err.message || 'Failed to submit highlight. Make sure the backend is running on http://localhost:8000.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function rateCard(cardId, rating) {
@@ -193,7 +216,10 @@ export default function App() {
               />
             </label>
 
-            <button type="submit" className="primary-btn">Submit Highlight</button>
+            {submitError && <p className="error">{submitError}</p>}
+            <button type="submit" className="primary-btn" disabled={submitting}>
+              {submitting ? 'Generating cards…' : 'Submit Highlight'}
+            </button>
           </form>
         </section>
       )}

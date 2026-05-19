@@ -96,6 +96,16 @@ button {
   color: #fff;
 }
 
+.primary-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.error {
+  color: #dc2626;
+  margin: 0;
+}
+
 .secondary-btn, .rating-btn {
   background: #e5e7eb;
   color: #111827;

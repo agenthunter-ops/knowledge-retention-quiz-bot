@@ -1,6 +1,11 @@
 from datetime import datetime
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
@@ -12,6 +17,17 @@ from .services.scheduler import ScheduleState, schedule_next
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Knowledge Retention Quiz Bot API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.post("/highlights", response_model=HighlightOut)

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from backend.app.scheduler import ScheduleState, schedule_next
+from backend.app.services.scheduler import ScheduleState, schedule_next
 
 
 def test_again_resets_repetitions_and_interval():

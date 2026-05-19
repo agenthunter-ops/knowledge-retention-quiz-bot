@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
 from .models import Card, Highlight, ReviewLog
 from .schemas import CardOut, CardUpdate, HighlightCreate, HighlightOut, ReviewRequest
-from .services.quiz_generator import generate_mock_cards, normalize_tags
+from .services.quiz_generator import generate_cards_with_fallback, normalize_tags
 from .services.scheduler import ScheduleState, schedule_next
 
 Base.metadata.create_all(bind=engine)
@@ -25,8 +25,19 @@ def create_highlight(payload: HighlightCreate, db: Session = Depends(get_db)):
     db.add(highlight)
     db.flush()
 
-    for q, a in generate_mock_cards(payload.text):
-        db.add(Card(highlight_id=highlight.id, question=q, answer=a, due_date=datetime.utcnow()))
+    cards = generate_cards_with_fallback(payload.text)
+    for card in cards:
+        db.add(
+            Card(
+                highlight_id=highlight.id,
+                question=card["question"],
+                answer=card["answer"],
+                card_type=card["card_type"],
+                difficulty=card["difficulty"],
+                source_quote=card["source_quote"],
+                due_date=datetime.utcnow(),
+            )
+        )
 
     db.commit()
     db.refresh(highlight)

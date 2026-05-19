@@ -26,6 +26,9 @@ class Card(Base):
     highlight_id = Column(Integer, ForeignKey("highlights.id"), nullable=False, index=True)
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
+    card_type = Column(String(64), default="short_answer", nullable=False)
+    difficulty = Column(String(32), default="medium", nullable=False)
+    source_quote = Column(Text, default="", nullable=False)
     is_flagged = Column(Boolean, default=False, nullable=False)
 
     interval_days = Column(Integer, default=1, nullable=False)

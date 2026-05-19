@@ -1,8 +1,12 @@
 from typing import Iterable
 
 
-def generate_mock_cards(note_text: str) -> list[tuple[str, str]]:
-    sentences = [s.strip() for s in note_text.replace("\n", " ").split(".") if s.strip()]
+def generate_mock_cards(highlight_text: str) -> list[tuple[str, str]]:
+    """Create lightweight quiz cards from a highlight.
+
+    The function is intentionally deterministic so interviewers can follow the logic.
+    """
+    sentences = [s.strip() for s in highlight_text.replace("\n", " ").split(".") if s.strip()]
     cards: list[tuple[str, str]] = []
 
     for sentence in sentences[:3]:
@@ -14,8 +18,8 @@ def generate_mock_cards(note_text: str) -> list[tuple[str, str]]:
         question = "Fill in the blank: " + " ".join(words[:pivot] + ["____"] + words[pivot + 1 :])
         cards.append((question, answer))
 
-    if not cards and note_text.strip():
-        cards.append(("What is the main idea of this note?", note_text.strip()[:120]))
+    if not cards and highlight_text.strip():
+        cards.append(("What is the main idea of this highlight?", highlight_text.strip()[:120]))
 
     return cards
 

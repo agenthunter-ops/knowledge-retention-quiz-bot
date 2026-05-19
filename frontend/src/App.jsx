@@ -1,73 +1,283 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import './App.css'
 
 const API = 'http://localhost:8000'
 
+const pages = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'add-highlight', label: 'Add Highlight' },
+  { key: 'due-cards', label: 'Due Cards' },
+  { key: 'card-management', label: 'Card Management' },
+]
+
 export default function App() {
-  const [form, setForm] = useState({ source_title: '', source_type: 'book', note_text: '', tags: '' })
+  const [activePage, setActivePage] = useState('dashboard')
+  const [highlights, setHighlights] = useState([])
+  const [cards, setCards] = useState([])
   const [dueCards, setDueCards] = useState([])
   const [revealed, setRevealed] = useState({})
+  const [lastReviewUpdate, setLastReviewUpdate] = useState({})
+  const [loading, setLoading] = useState(false)
 
-  async function fetchDue() {
-    const res = await fetch(`${API}/cards/due`)
-    setDueCards(await res.json())
+  const [highlightForm, setHighlightForm] = useState({
+    source_title: '',
+    source_type: 'book',
+    text: '',
+    tags: '',
+  })
+
+  const [editingCardId, setEditingCardId] = useState(null)
+  const [editForm, setEditForm] = useState({ question: '', answer: '' })
+
+  const stats = useMemo(() => {
+    const dueToday = dueCards.length
+    const flaggedCards = cards.filter((c) => c.is_flagged).length
+    return {
+      totalHighlights: highlights.length,
+      totalCards: cards.length,
+      dueToday,
+      flaggedCards,
+    }
+  }, [highlights, cards, dueCards])
+
+  async function loadData() {
+    setLoading(true)
+    try {
+      const [highlightsRes, cardsRes, dueCardsRes] = await Promise.all([
+        fetch(`${API}/highlights`),
+        fetch(`${API}/cards`),
+        fetch(`${API}/cards/due`),
+      ])
+
+      const [highlightsData, cardsData, dueCardsData] = await Promise.all([
+        highlightsRes.json(),
+        cardsRes.json(),
+        dueCardsRes.json(),
+      ])
+
+      setHighlights(highlightsData)
+      setCards(cardsData)
+      setDueCards(dueCardsData)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
-    fetchDue()
+    loadData()
   }, [])
 
-  async function submitNote(e) {
+  async function submitHighlight(e) {
     e.preventDefault()
-    await fetch(`${API}/notes`, {
+    await fetch(`${API}/highlights`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean) }),
+      body: JSON.stringify({
+        ...highlightForm,
+        tags: highlightForm.tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+      }),
     })
-    setForm({ source_title: '', source_type: 'book', note_text: '', tags: '' })
-    fetchDue()
+
+    setHighlightForm({ source_title: '', source_type: 'book', text: '', tags: '' })
+    setActivePage('due-cards')
+    loadData()
   }
 
   async function rateCard(cardId, rating) {
-    await fetch(`${API}/cards/${cardId}/review`, {
+    const res = await fetch(`${API}/reviews/${cardId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rating }),
     })
-    fetchDue()
+    const updatedCard = await res.json()
+    setLastReviewUpdate((prev) => ({ ...prev, [cardId]: updatedCard.due_date }))
+    loadData()
+  }
+
+  function startEdit(card) {
+    setEditingCardId(card.id)
+    setEditForm({ question: card.question, answer: card.answer })
+  }
+
+  async function saveCardEdit(cardId) {
+    await fetch(`${API}/cards/${cardId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editForm),
+    })
+    setEditingCardId(null)
+    loadData()
+  }
+
+  async function flagCard(cardId) {
+    await fetch(`${API}/cards/${cardId}/flag`, { method: 'POST' })
+    loadData()
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: '0 auto', fontFamily: 'sans-serif' }}>
-      <h1>Knowledge Retention Quiz Bot (MVP)</h1>
+    <main className="app-shell">
+      <header className="header">
+        <h1>Knowledge Retention Quiz Bot</h1>
+        <p>Simple MVP interface for highlights and spaced-repetition cards.</p>
+      </header>
 
-      <form onSubmit={submitNote} style={{ display: 'grid', gap: 8, marginBottom: 24 }}>
-        <input placeholder="Source title" value={form.source_title} onChange={(e) => setForm({ ...form, source_title: e.target.value })} required />
-        <select value={form.source_type} onChange={(e) => setForm({ ...form, source_type: e.target.value })}>
-          <option value="book">Book</option>
-          <option value="article">Article</option>
-          <option value="pdf">PDF</option>
-          <option value="certification">Certification</option>
-          <option value="other">Other</option>
-        </select>
-        <textarea placeholder="Paste notes/highlights" rows="5" value={form.note_text} onChange={(e) => setForm({ ...form, note_text: e.target.value })} required />
-        <input placeholder="Tags (comma separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
-        <button type="submit">Save note + generate cards</button>
-      </form>
+      <nav className="tabs">
+        {pages.map((page) => (
+          <button
+            key={page.key}
+            className={activePage === page.key ? 'tab active' : 'tab'}
+            onClick={() => setActivePage(page.key)}
+          >
+            {page.label}
+          </button>
+        ))}
+      </nav>
 
-      <h2>Due cards</h2>
-      {dueCards.length === 0 && <p>No cards due.</p>}
-      {dueCards.map((card) => (
-        <div key={card.id} style={{ border: '1px solid #ddd', padding: 12, marginBottom: 12 }}>
-          <p><strong>Q:</strong> {card.question}</p>
-          <button onClick={() => setRevealed({ ...revealed, [card.id]: !revealed[card.id] })}>Reveal answer</button>
-          {revealed[card.id] && <p><strong>A:</strong> {card.answer}</p>}
-          <div style={{ display: 'flex', gap: 8 }}>
-            {['AGAIN', 'HARD', 'GOOD', 'EASY'].map((r) => (
-              <button key={r} onClick={() => rateCard(card.id, r)}>{r}</button>
-            ))}
-          </div>
-        </div>
-      ))}
+      {loading && <p className="muted">Loading...</p>}
+
+      {activePage === 'dashboard' && (
+        <section className="card-grid">
+          <StatCard label="Total Highlights" value={stats.totalHighlights} />
+          <StatCard label="Total Cards" value={stats.totalCards} />
+          <StatCard label="Due Today" value={stats.dueToday} />
+          <StatCard label="Flagged Cards" value={stats.flaggedCards} />
+        </section>
+      )}
+
+      {activePage === 'add-highlight' && (
+        <section className="panel">
+          <h2>Add Highlight</h2>
+          <form onSubmit={submitHighlight} className="form-grid">
+            <label>
+              Source Title
+              <input
+                value={highlightForm.source_title}
+                onChange={(e) => setHighlightForm({ ...highlightForm, source_title: e.target.value })}
+                required
+              />
+            </label>
+
+            <label>
+              Source Type
+              <select
+                value={highlightForm.source_type}
+                onChange={(e) => setHighlightForm({ ...highlightForm, source_type: e.target.value })}
+              >
+                <option value="book">Book</option>
+                <option value="article">Article</option>
+                <option value="pdf">PDF</option>
+                <option value="certification">Certification</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+
+            <label>
+              Tags
+              <input
+                placeholder="comma, separated, tags"
+                value={highlightForm.tags}
+                onChange={(e) => setHighlightForm({ ...highlightForm, tags: e.target.value })}
+              />
+            </label>
+
+            <label>
+              Note / Highlight Text
+              <textarea
+                rows="5"
+                value={highlightForm.text}
+                onChange={(e) => setHighlightForm({ ...highlightForm, text: e.target.value })}
+                required
+              />
+            </label>
+
+            <button type="submit" className="primary-btn">Submit Highlight</button>
+          </form>
+        </section>
+      )}
+
+      {activePage === 'due-cards' && (
+        <section className="panel">
+          <h2>Due Cards</h2>
+          {dueCards.length === 0 ? (
+            <p className="muted">No cards due right now.</p>
+          ) : (
+            dueCards.map((card) => (
+              <article key={card.id} className="quiz-card">
+                <p><strong>Question:</strong> {card.question}</p>
+                <button className="secondary-btn" onClick={() => setRevealed((prev) => ({ ...prev, [card.id]: !prev[card.id] }))}>
+                  {revealed[card.id] ? 'Hide Answer' : 'Reveal Answer'}
+                </button>
+
+                {revealed[card.id] && <p><strong>Answer:</strong> {card.answer}</p>}
+
+                <div className="rating-row">
+                  {['AGAIN', 'HARD', 'GOOD', 'EASY'].map((rating) => (
+                    <button key={rating} className="rating-btn" onClick={() => rateCard(card.id, rating)}>{rating}</button>
+                  ))}
+                </div>
+
+                {lastReviewUpdate[card.id] && (
+                  <p className="muted">Next due date: {new Date(lastReviewUpdate[card.id]).toLocaleString()}</p>
+                )}
+              </article>
+            ))
+          )}
+        </section>
+      )}
+
+      {activePage === 'card-management' && (
+        <section className="panel">
+          <h2>Card Management</h2>
+          {cards.length === 0 ? (
+            <p className="muted">No cards available yet.</p>
+          ) : (
+            cards.map((card) => (
+              <article key={card.id} className="manage-card">
+                {editingCardId === card.id ? (
+                  <>
+                    <label>
+                      Question
+                      <input value={editForm.question} onChange={(e) => setEditForm({ ...editForm, question: e.target.value })} />
+                    </label>
+                    <label>
+                      Answer
+                      <textarea rows="3" value={editForm.answer} onChange={(e) => setEditForm({ ...editForm, answer: e.target.value })} />
+                    </label>
+                    <div className="action-row">
+                      <button className="primary-btn" onClick={() => saveCardEdit(card.id)}>Save</button>
+                      <button className="secondary-btn" onClick={() => setEditingCardId(null)}>Cancel</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p><strong>Q:</strong> {card.question}</p>
+                    <p><strong>A:</strong> {card.answer}</p>
+                    <p className="muted">Status: {card.is_flagged ? 'Flagged' : 'Active'}</p>
+                    <div className="action-row">
+                      <button className="secondary-btn" onClick={() => startEdit(card)}>Edit</button>
+                      <button className="danger-btn" onClick={() => flagCard(card.id)} disabled={card.is_flagged}>
+                        {card.is_flagged ? 'Flagged' : 'Flag Bad Card'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </article>
+            ))
+          )}
+        </section>
+      )}
     </main>
+  )
+}
+
+function StatCard({ label, value }) {
+  return (
+    <article className="stat-card">
+      <p className="muted">{label}</p>
+      <h3>{value}</h3>
+    </article>
   )
 }

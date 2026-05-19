@@ -56,6 +56,11 @@ def list_highlights(db: Session = Depends(get_db)):
     ]
 
 
+@app.get("/cards", response_model=list[CardOut])
+def list_cards(db: Session = Depends(get_db)):
+    return db.query(Card).order_by(Card.created_at.desc()).all()
+
+
 @app.get("/cards/due", response_model=list[CardOut])
 def get_due_cards(db: Session = Depends(get_db)):
     return db.query(Card).filter(Card.due_date <= datetime.utcnow(), Card.is_flagged.is_(False)).order_by(Card.due_date.asc()).all()

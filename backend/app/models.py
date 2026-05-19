@@ -6,24 +6,24 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 
-class Note(Base):
-    __tablename__ = "notes"
+class Highlight(Base):
+    __tablename__ = "highlights"
 
     id = Column(Integer, primary_key=True, index=True)
     source_title = Column(String(255), nullable=False)
     source_type = Column(String(100), nullable=False)
-    note_text = Column(Text, nullable=False)
+    text = Column(Text, nullable=False)
     tags = Column(String(255), default="")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    cards = relationship("Card", back_populates="note", cascade="all, delete-orphan")
+    cards = relationship("Card", back_populates="highlight", cascade="all, delete-orphan")
 
 
 class Card(Base):
     __tablename__ = "cards"
 
     id = Column(Integer, primary_key=True, index=True)
-    note_id = Column(Integer, ForeignKey("notes.id"), nullable=False, index=True)
+    highlight_id = Column(Integer, ForeignKey("highlights.id"), nullable=False, index=True)
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     is_flagged = Column(Boolean, default=False, nullable=False)
@@ -35,4 +35,18 @@ class Card(Base):
     last_reviewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    note = relationship("Note", back_populates="cards")
+    highlight = relationship("Highlight", back_populates="cards")
+    review_logs = relationship("ReviewLog", back_populates="card", cascade="all, delete-orphan")
+
+
+class ReviewLog(Base):
+    __tablename__ = "review_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    card_id = Column(Integer, ForeignKey("cards.id"), nullable=False, index=True)
+    rating = Column(String(10), nullable=False)
+    reviewed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    prev_interval_days = Column(Integer, nullable=False)
+    new_interval_days = Column(Integer, nullable=False)
+
+    card = relationship("Card", back_populates="review_logs")

@@ -10,6 +10,7 @@ class ScheduleState:
 
 
 def schedule_next(state: ScheduleState, rating: str, now: datetime | None = None) -> tuple[ScheduleState, datetime]:
+    """Update card schedule based on rating using interview-friendly SM-2 style rules."""
     now = now or datetime.utcnow()
 
     if rating == "AGAIN":

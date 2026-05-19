@@ -19,28 +19,25 @@ class Rating(str, Enum):
     EASY = "EASY"
 
 
-class NoteCreate(BaseModel):
+class HighlightCreate(BaseModel):
     source_title: str = Field(min_length=1)
     source_type: SourceType
-    note_text: str = Field(min_length=1)
+    text: str = Field(min_length=1)
     tags: list[str] = []
 
 
-class NoteOut(BaseModel):
+class HighlightOut(BaseModel):
     id: int
     source_title: str
     source_type: str
-    note_text: str
+    text: str
     tags: list[str]
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class CardOut(BaseModel):
     id: int
-    note_id: int
+    highlight_id: int
     question: str
     answer: str
     is_flagged: bool
@@ -48,9 +45,6 @@ class CardOut(BaseModel):
     interval_days: int
     repetitions: int
     ease_factor: float
-
-    class Config:
-        from_attributes = True
 
 
 class CardUpdate(BaseModel):

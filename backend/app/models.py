@@ -29,6 +29,9 @@ class Card(Base):
     card_type = Column(String(64), default="short_answer", nullable=False)
     difficulty = Column(String(32), default="medium", nullable=False)
     source_quote = Column(Text, default="", nullable=False)
+    explanation = Column(Text, default="", nullable=False)
+    why_it_matters = Column(Text, default="", nullable=False)
+    tags = Column(String(255), default="", nullable=False)
     is_flagged = Column(Boolean, default=False, nullable=False)
 
     interval_days = Column(Integer, default=1, nullable=False)

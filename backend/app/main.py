@@ -51,6 +51,9 @@ def create_highlight(payload: HighlightCreate, db: Session = Depends(get_db)):
                 card_type=card["card_type"],
                 difficulty=card["difficulty"],
                 source_quote=card["source_quote"],
+                explanation=card["explanation"],
+                why_it_matters=card["why_it_matters"],
+                tags=card["tags"],
                 due_date=datetime.utcnow(),
             )
         )

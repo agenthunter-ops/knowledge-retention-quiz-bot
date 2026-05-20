@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from collections import Counter
 from typing import Iterable
 
 from openai import OpenAI
@@ -38,89 +39,22 @@ BAD_ANSWERS = {
     "because",
 }
 
-CONCEPT_STOPWORDS = {
-    "should", "would", "could", "can", "may", "might", "must", "the", "this", "that",
-    "with", "over", "under", "because", "from", "into", "enough", "helps", "improves",
-    "important", "good", "bad", "review", "time", "system", "card",
-}
-
-BLOCKED_QUESTION_PATTERNS = {
-    "core concept behind should",
-    "core concept behind would",
-    "core concept behind could",
-}
-
 
 def _split_sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"[.!?]\s+", text.replace("\n", " ")) if s.strip()]
 
 
-def _contains_any(text: str, terms: set[str]) -> bool:
-    lowered = text.lower()
-    return any(term in lowered for term in terms)
-
-
-def _theme_cards(source_quote: str, highlight_text: str) -> list[dict[str, str]]:
-    text = highlight_text.lower()
-    cards: list[dict[str, str]] = []
-
-    if ("difficult cards" in text or "easy cards" in text or ("difficult" in text and "easy" in text)):
-        cards.append(
-            {
-                "question": "Why should difficult cards be reviewed sooner than easy cards?",
-                "answer": "Difficult cards represent weaker memories and need shorter review intervals before the learner forgets them.",
-                "card_type": "why_reasoning",
-                "difficulty": "medium",
-                "source_quote": source_quote,
-                "explanation": "This connects difficulty signals to adaptive scheduling behavior.",
-                "why_it_matters": "It ensures the learner spends more effort where forgetting risk is highest.",
-                "tags": "difficulty,adaptive-scheduling",
-            }
-        )
-
-    if ("review history" in text or "next due date" in text or "due date" in text):
-        cards.append(
-            {
-                "question": "What data should every spaced repetition card store to support adaptive scheduling?",
-                "answer": "It should store review history, difficulty, last reviewed date, interval, and next due date.",
-                "card_type": "concept",
-                "difficulty": "medium",
-                "source_quote": source_quote,
-                "explanation": "This tests understanding of the data model that powers review timing decisions.",
-                "why_it_matters": "Without this data, the scheduler cannot personalize future review intervals.",
-                "tags": "data-model,scheduler",
-            }
-        )
-
-    if all(term in text for term in ["again", "hard", "good", "easy"]):
-        cards.append(
-            {
-                "question": "How do recall ratings like AGAIN, HARD, GOOD, and EASY affect the next review date?",
-                "answer": "Lower ratings shorten the interval and schedule an earlier review, while higher ratings increase the interval.",
-                "card_type": "scenario_application",
-                "difficulty": "medium",
-                "source_quote": source_quote,
-                "explanation": "This checks whether learners understand how performance feedback updates scheduling.",
-                "why_it_matters": "Rating-driven scheduling is the core loop that improves long-term retention.",
-                "tags": "ratings,intervals",
-            }
-        )
-
-    if ("sm-2" in text or "sm2" in text):
-        cards.append(
-            {
-                "question": "Why is an SM-2 inspired algorithm useful for an MVP spaced repetition app?",
-                "answer": "It is simple, explainable, and updates intervals based on recall quality without heavy implementation complexity.",
-                "card_type": "tradeoff",
-                "difficulty": "medium",
-                "source_quote": source_quote,
-                "explanation": "This frames SM-2 as a product tradeoff between sophistication and practical implementation.",
-                "why_it_matters": "Teams can ship a reliable scheduler quickly while keeping behavior transparent.",
-                "tags": "sm-2,mvp,tradeoff",
-            }
-        )
-
-    return cards
+def _extract_key_phrases(text: str) -> list[str]:
+    tokens = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", text)
+    freq = Counter(t.lower() for t in tokens if t.lower() not in BAD_ANSWERS)
+    candidates = [term for term, _ in freq.most_common(8)]
+    multi_word = re.findall(r"\b([A-Za-z]{3,}(?:\s+[A-Za-z]{3,}){1,3})\b", text)
+    for phrase in multi_word:
+        if any(w.lower() in BAD_ANSWERS for w in phrase.split()):
+            continue
+        if phrase.lower() not in candidates:
+            candidates.append(phrase.lower())
+    return candidates[:8]
 
 
 def is_high_quality_card(card: dict) -> bool:
@@ -128,75 +62,68 @@ def is_high_quality_card(card: dict) -> bool:
     answer = str(card.get("answer", "")).strip().lower()
     source_quote = str(card.get("source_quote", "")).strip()
     explanation = str(card.get("explanation", "")).strip()
-    why_it_matters = str(card.get("why_it_matters", "")).strip()
     card_type = str(card.get("card_type", "")).strip()
 
     if len(question) < 20:
         return False
-    if any(pattern in question.lower() for pattern in BLOCKED_QUESTION_PATTERNS):
-        return False
     if answer in BAD_ANSWERS:
         return False
-    if len(answer.split()) < 8:
+    if len(answer) < 3:
         return False
-    if not source_quote or not explanation or not why_it_matters:
+    if not source_quote:
+        return False
+    if not explanation:
         return False
     if card_type not in CARD_TYPES:
         return False
 
-    concept_match = re.search(r"core concept behind\s+([a-z\-]+)", question.lower())
-    if concept_match and concept_match.group(1) in CONCEPT_STOPWORDS:
+    concept_tokens = {"why", "how", "tradeoff", "scenario", "concept", "because", "should", "impact"}
+    if not any(token in question.lower() for token in concept_tokens) and len(question.split()) < 6:
         return False
-
-    concept_signals = {"difficult cards", "easy cards", "review history", "next review", "due date", "again", "hard", "good", "easy", "sm-2", "interval"}
-    if not _contains_any(question, concept_signals) and card_type in {"concept", "tradeoff", "scenario_application"}:
-        return False
-
     return True
 
 
 def generate_fallback_cards(highlight_text: str) -> list[dict[str, str]]:
     sentences = _split_sentences(highlight_text)
-    source_quote = sentences[0] if sentences else highlight_text.strip()
+    source = sentences[0] if sentences else highlight_text.strip()
+    key_phrases = _extract_key_phrases(highlight_text)
+    main_term = key_phrases[0] if key_phrases else "core concept"
+    alt_term = key_phrases[1] if len(key_phrases) > 1 else main_term
 
-    cards = _theme_cards(source_quote=source_quote, highlight_text=highlight_text)
+    cards = [
+        {
+            "question": f"What is the core concept behind {main_term} in this highlight, and how would you explain it in practical terms?",
+            "answer": f"{main_term.title()} is presented as a repeatable idea that should guide daily study behavior and improve retention through consistent review.",
+            "card_type": "concept",
+            "difficulty": "medium",
+            "source_quote": source,
+            "explanation": "This checks conceptual understanding instead of asking for exact wording.",
+            "why_it_matters": "Learners need to internalize the idea to apply it across different study contexts.",
+            "tags": "concept,understanding",
+        },
+        {
+            "question": f"Why does the highlight imply that focusing on {alt_term} improves long-term learning outcomes?",
+            "answer": "Because repeated, intentional practice reinforces recall pathways and reduces forgetting between sessions.",
+            "card_type": "why_reasoning",
+            "difficulty": "medium",
+            "source_quote": source,
+            "explanation": "This forces the learner to explain causal reasoning.",
+            "why_it_matters": "Reasoning questions build transferable judgment, not rote recall.",
+            "tags": "why,retention",
+        },
+        {
+            "question": "A learner repeatedly misses the same card. What should the review system do next, and why?",
+            "answer": "The scheduler should shorten the interval and resurface the card sooner so difficulty is addressed before forgetting compounds.",
+            "card_type": "scenario_application",
+            "difficulty": "medium",
+            "source_quote": source,
+            "explanation": "This evaluates practical application of spaced-repetition logic.",
+            "why_it_matters": "Application skills are required to tune learning systems effectively.",
+            "tags": "scenario,scheduling",
+        },
+    ]
 
-    if len(cards) < 2:
-        cards.extend(
-            [
-                {
-                    "question": "Why does spaced repetition use increasing intervals instead of fixed daily review?",
-                    "answer": "Increasing intervals reinforce recall near the forgetting curve while avoiding unnecessary reviews for stable memories.",
-                    "card_type": "why_reasoning",
-                    "difficulty": "medium",
-                    "source_quote": source_quote,
-                    "explanation": "This tests conceptual understanding of interval expansion.",
-                    "why_it_matters": "It connects scheduler design to efficient long-term retention.",
-                    "tags": "spaced-repetition,intervals",
-                },
-                {
-                    "question": "A card is answered incorrectly twice. What should happen to its next due date?",
-                    "answer": "The next due date should move sooner by reducing the interval so the weak memory is reinforced before decay.",
-                    "card_type": "scenario_application",
-                    "difficulty": "medium",
-                    "source_quote": source_quote,
-                    "explanation": "This checks practical application of adaptive scheduling behavior.",
-                    "why_it_matters": "It validates understanding of how systems respond to low recall quality.",
-                    "tags": "weak-memories,next-due-date",
-                },
-            ]
-        )
-
-    unique_cards = []
-    seen_questions = set()
-    for card in cards:
-        if card["question"] in seen_questions:
-            continue
-        seen_questions.add(card["question"])
-        if is_high_quality_card(card):
-            unique_cards.append(card)
-
-    return unique_cards[:5]
+    return [card for card in cards if is_high_quality_card(card)]
 
 
 def generate_llm_cards(highlight_text: str) -> list[dict[str, str]]:
@@ -209,8 +136,8 @@ def generate_llm_cards(highlight_text: str) -> list[dict[str, str]]:
         "Generate exactly 5 high-quality quiz cards from the highlight. "
         "Cards must use only these card_type values: concept, why_reasoning, scenario_application, tradeoff, cloze_key_term. "
         "Every object must include: question, answer, card_type, difficulty, source_quote, explanation, why_it_matters, tags. "
-        "Never create concept questions around modal/common words (should, would, could, with, over, helps, improves). "
-        "Answers must be at least 8 words and questions must test practical understanding. "
+        "Do not use common-word answers like with, over, the, is, are, and, because, from, for. "
+        "Questions must test understanding and practical reasoning. "
         "Return strict JSON array only."
     )
 
